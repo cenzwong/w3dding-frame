@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Monitor, 
-  Settings, 
   Image as ImageIcon, 
-  Github, 
+  FolderGit2 as GithubIcon,
   Upload, 
   Play, 
   Trash2, 
@@ -11,10 +10,10 @@ import {
   Wifi, 
   WifiOff,
   CheckCircle2,
-  AlertCircle,
   X
 } from 'lucide-react';
-import Peer, { DataConnection } from 'peerjs';
+import Peer from 'peerjs';
+import type { DataConnection } from 'peerjs';
 
 type PlaylistItem = {
   id: string;
@@ -41,7 +40,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-100 font-sans selection:bg-blue-500/30">
-      {mode === 'frame' ? <FrameView /> : <AdminView onSwitch={() => setMode('frame')} />}
+      {mode === 'frame' ? <FrameView /> : <AdminView />}
     </div>
   );
 }
@@ -55,7 +54,7 @@ function FrameView() {
   const [isConnected, setIsConnected] = useState(false);
   
   const peerRef = useRef<Peer | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const peer = new Peer();
@@ -164,7 +163,7 @@ function FrameView() {
   );
 }
 
-function AdminView({ onSwitch }: { onSwitch: () => void }) {
+function AdminView() {
   const [targetId, setTargetId] = useState('');
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
   const [repo, setRepo] = useState('');
@@ -303,7 +302,7 @@ function AdminView({ onSwitch }: { onSwitch: () => void }) {
         <div className="space-y-6">
           <section className="bg-neutral-800 border border-neutral-700 p-6 rounded-[2rem] shadow-lg">
             <div className="flex items-center gap-2 mb-4 text-blue-400">
-              <Github className="w-5 h-5" />
+              <GithubIcon className="w-5 h-5" />
               <h2 className="font-bold text-sm uppercase tracking-wider">GitHub Repository</h2>
             </div>
             <div className="flex gap-2">
