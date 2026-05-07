@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DIY E-ink Style Art Frame</title>
+    <!-- 引入 PeerJS 庫 -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --paper-color: #f4f1ea;
+        }
+
+        body {
+            background-color: #1a1a1a;
+            color: #333;
+            font-family: sans-serif;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 畫框顯示區域 */
+        #frame-view {
+            width: 100vw;
+            height: 100vh;
+            background-color: var(--paper-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: none; /* 隱藏游標 */
+        }
+
+        /* 紙張紋理疊層 */
+        .paper-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.15;
+            background-image: url('https://www.transparenttextures.com/patterns/felt.png');
+            z-index: 10;
+        }
+
+        .art-image {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            /* 藝術濾鏡：輕微降低對比度，增加溫潤感 */
+            filter: contrast(0.95) brightness(1.05) saturate(0.9);
+            transition: opacity 1.5s ease-in-out;
+        }
+
+        /* 控制台樣式 */
+        #admin-view {
+            background-color: #f9f9f9;
+            height: 100vh;
+            overflow-y: auto;
+            cursor: default;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 顯示框模式 (Display Frame) -->
+    <div id="frame-view" class="hidden">
+        <div class="paper-overlay"></div>
+        <img id="main-photo" src="" class="art-image opacity-0" alt="Art">
+        <div id="setup-info" class="absolute bottom-4 left-4 bg-white/80 p-2 text-xs rounded border border-gray-300 z-20 cursor-default">
+            等待連接... ID: <span id="my-id" class="font-bold">---</span>
+        </div>
+        <!-- 隱藏的手控按鈕 -->
+        <button onclick="toggleFullscreen()" class="absolute top-4 right-4 opacity-0 hover:opacity-100 bg-black/20 text-white p-2 rounded z-20">全螢幕</button>
+    </div>
+
+    <!-- 2. 控制台模式 (Admin Controller) -->
+    <div id="admin-view" class="p-6">
+        <div class="max-w-md mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-200">
+            <h1 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">畫框控制台</h1>
+            
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">步驟 1: 連接畫框</label>
+                <div class="flex gap-2">
+                    <input type="text" id="target-id" placeholder="輸入畫框 ID" class="flex-1 p-2 border rounded text-sm">
+                    <button onclick="connectToFrame()" id="connect-btn" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">連接</button>
+                </div>
+                <p id="conn-status" class="mt-2 text-xs text-gray-500">未連接</p>
+            </div>
+
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">方法 A: 直接上載圖片 (P2P)</label>
+                    <input type="file" id="file-input" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                </div>
+
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center"><span class="w-full border-t"></span></div>
+                    <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-gray-500">或</span></div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">方法 B: 輸入 GitHub / 圖片網址</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="url-input" placeholder="https://raw.githubusercontent.com/..." class="flex-1 p-2 border rounded text-sm">
+                        <button onclick="sendUrl()" class="bg-gray-800 text-white px-4 py-2 rounded text-sm hover:bg-black">傳送</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8 pt-6 border-t">
+                <p class="text-xs text-gray-400">提示：在 LCD 螢幕打開此頁並選取「顯示框模式」，然後記下 ID 並在此輸入。</p>
+                <button onclick="switchMode('frame')" class="mt-4 w-full border border-gray-300 text-gray-600 py-2 rounded text-sm hover:bg-gray-50">切換到顯示框模式</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let peer;
+        let conn;
+        const currentMode = new URLSearchParams(window.location.search).get('mode') || 'admin';
+
+        // 初始化頁面模式
+        function init() {
+            if (currentMode === 'frame') {
+                document.getElementById('frame-view').classList.remove('hidden');
+                document.getElementById('admin-view').classList.add('hidden');
+                setupFrame();
+            } else {
+                document.getElementById('admin-view').classList.remove('hidden');
+                document.getElementById('frame-view').classList.add('hidden');
+                setupAdmin();
+            }
+        }
+
+        // --- 顯示框邏輯 ---
+        function setupFrame() {
+            peer = new Peer(); // 隨機生成 ID
+            peer.on('open', (id) => {
+                document.getElementById('my-id').innerText = id;
+            });
+
+            peer.on('connection', (connection) => {
+                conn = connection;
+                document.getElementById('setup-info').classList.add('hidden');
+                
+                conn.on('data', (data) => {
+                    const imgElement = document.getElementById('main-photo');
+                    imgElement.classList.add('opacity-0'); // 先淡出
+
+                    setTimeout(() => {
+                        if (data.type === 'URL') {
+                            imgElement.src = data.payload;
+                        } else if (data.type === 'FILE') {
+                            const blob = new Blob([data.payload], { type: data.mime });
+                            imgElement.src = URL.createObjectURL(blob);
+                        }
+                        imgElement.classList.remove('opacity-0'); // 淡入
+                    }, 1500); // 模擬 E-ink 刷新感
+                });
+            });
+        }
+
+        // --- 控制台邏輯 ---
+        function setupAdmin() {
+            peer = new Peer();
+            
+            document.getElementById('file-input').addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file && conn && conn.open) {
+                    // 將檔案轉為 ArrayBuffer 傳送
+                    file.arrayBuffer().then(buffer => {
+                        conn.send({
+                            type: 'FILE',
+                            payload: buffer,
+                            mime: file.type
+                        });
+                    });
+                } else if (!conn) {
+                    alert('請先連接畫框！');
+                }
+            });
+        }
+
+        function connectToFrame() {
+            const targetId = document.getElementById('target-id').value;
+            if (!targetId) return;
+            
+            conn = peer.connect(targetId);
+            conn.on('open', () => {
+                document.getElementById('conn-status').innerText = '✅ 已成功連接畫框';
+                document.getElementById('conn-status').classList.add('text-green-600');
+                document.getElementById('connect-btn').innerText = '已連接';
+                document.getElementById('connect-btn').disabled = true;
+            });
+        }
+
+        function sendUrl() {
+            const url = document.getElementById('url-input').value;
+            if (url && conn && conn.open) {
+                conn.send({ type: 'URL', payload: url });
+            }
+        }
+
+        // --- 公用工具 ---
+        function switchMode(mode) {
+            window.location.href = window.location.pathname + '?mode=' + mode;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
