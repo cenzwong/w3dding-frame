@@ -10,9 +10,11 @@ import {
   Wifi, 
   WifiOff,
   CheckCircle2,
-  X
+  X,
+  QrCode
 } from 'lucide-react';
 import Peer from 'peerjs';
+import { QRCodeSVG } from 'qrcode.react';
 import type { DataConnection } from 'peerjs';
 
 type PlaylistItem = {
@@ -52,6 +54,7 @@ function FrameView() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [showQR, setShowQR] = useState(false);
   
   const peerRef = useRef<Peer | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -136,17 +139,42 @@ function FrameView() {
       )}
 
       {/* Status Overlay */}
-      <div className="absolute bottom-8 left-8 z-30 group">
-        <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-neutral-200/50 flex flex-col gap-1 transition-all duration-500 opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0">
+      <div className="absolute bottom-8 left-8 z-30">
+        <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-neutral-200/50 flex flex-col gap-1 transition-all duration-500">
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-amber-500'}`}></div>
             <span className="text-[10px] font-bold text-neutral-800 uppercase tracking-widest">
               {isConnected ? 'Connected' : 'Offline Mode'}
             </span>
           </div>
-          <p className="text-[10px] font-mono text-neutral-500 uppercase">Frame ID: <span className="text-blue-600 select-all">{peerId}</span></p>
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-[10px] font-mono text-neutral-500 uppercase">Frame ID: <span className="text-blue-600 select-all">{peerId}</span></p>
+            {peerId && (
+              <button onClick={() => setShowQR(true)} className="p-1 hover:bg-neutral-100 rounded transition-colors" title="Show QR Code">
+                <QrCode className="w-4 h-4 text-neutral-600" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {showQR && peerId && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowQR(false)}>
+          <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-xl text-neutral-800">Scan to Connect</h3>
+            <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-inner">
+              <QRCodeSVG
+                value={`${window.location.origin}${window.location.pathname}?targetId=${peerId}`}
+                size={256}
+              />
+            </div>
+            <p className="text-sm text-neutral-500 font-mono">{peerId}</p>
+            <button onClick={() => setShowQR(false)} className="w-full py-3 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-bold rounded-xl transition-colors">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       <button 
         onClick={() => document.documentElement.requestFullscreen()}
@@ -172,6 +200,14 @@ function AdminView() {
   
   const connRef = useRef<DataConnection | null>(null);
   const peerRef = useRef<Peer | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get('targetId');
+    if (target) {
+      setTargetId(target);
+    }
+  }, []);
 
   useEffect(() => {
     const peer = new Peer();
